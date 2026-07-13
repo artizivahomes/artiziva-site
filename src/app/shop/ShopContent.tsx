@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { motion } from "framer-motion";
 import { SlidersHorizontal, X } from "lucide-react";
 import ProductCard from "@/components/ui/ProductCard";
@@ -19,6 +19,24 @@ export default function ShopContent() {
   const [selectedCategory, setSelectedCategory] = useState<string>("All");
   const [selectedPriceRange, setSelectedPriceRange] = useState(0);
   const [showFilters, setShowFilters] = useState(false);
+  const [dbCategories, setDbCategories] = useState<string[]>([]);
+
+  useEffect(() => {
+    async function loadCategories() {
+      try {
+        const res = await fetch("/api/category");
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data) && data.length > 0) {
+            setDbCategories(data.map((c: any) => c.name));
+          }
+        }
+      } catch (err) {
+        console.error("Failed to load categories:", err);
+      }
+    }
+    loadCategories();
+  }, []);
 
   const filtered = useMemo(() => {
     return PRODUCTS.filter((p) => {
@@ -29,7 +47,8 @@ export default function ShopContent() {
     });
   }, [selectedCategory, selectedPriceRange]);
 
-  const categories = ["All", ...PRODUCT_CATEGORIES];
+  const categories = ["All", ...(dbCategories.length > 0 ? dbCategories : PRODUCT_CATEGORIES)];
+
 
   return (
     <>
@@ -48,12 +67,29 @@ export default function ShopContent() {
       {/* Filters + Grid */}
       <section className="pb-24 px-6">
         <div className="max-w-7xl mx-auto">
+          {/* Category Filter Buttons */}
+          <div className="flex items-center justify-start md:justify-center gap-2 mb-12 overflow-x-auto pb-4 scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent">
+            {categories.map((cat) => (
+              <button
+                key={cat}
+                onClick={() => setSelectedCategory(cat)}
+                className={`px-5 py-2.5 text-xs tracking-widest uppercase border whitespace-nowrap transition-all duration-300 ${
+                  selectedCategory === cat
+                    ? "bg-gold text-bg-primary border-gold font-medium shadow-md shadow-gold/10"
+                    : "border-border text-text-secondary hover:border-gold/50 hover:text-gold"
+                }`}
+              >
+                {cat}
+              </button>
+            ))}
+          </div>
+
           {/* Filter Bar */}
           <div className="flex items-center justify-between mb-8 pb-6 border-b border-border">
             <p className="text-text-secondary text-sm">{filtered.length} piece{filtered.length !== 1 ? "s" : ""}</p>
             <button onClick={() => setShowFilters(!showFilters)} className="flex items-center gap-2 text-xs tracking-widest uppercase text-text-secondary hover:text-gold transition-colors">
               <SlidersHorizontal className="w-4 h-4" />
-              Filters
+              Filter by Price
             </button>
           </div>
 
@@ -61,35 +97,23 @@ export default function ShopContent() {
           {showFilters && (
             <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} className="mb-8 p-6 border border-border bg-bg-card">
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-xs tracking-widest uppercase text-gold">Filter Collection</h3>
-                <button onClick={() => { setSelectedCategory("All"); setSelectedPriceRange(0); }} className="text-xs text-text-muted hover:text-cream transition-colors">Clear All</button>
+                <h3 className="text-xs tracking-widest uppercase text-gold">Price Filter</h3>
+                <button onClick={() => { setSelectedPriceRange(0); }} className="text-xs text-text-muted hover:text-cream transition-colors">Clear Price</button>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                  <p className="text-xs tracking-wider uppercase text-text-muted mb-3">Category</p>
-                  <div className="flex flex-wrap gap-2">
-                    {categories.map((cat) => (
-                      <button key={cat} onClick={() => setSelectedCategory(cat)}
-                        className={`px-3 py-1.5 text-xs tracking-wider transition-all duration-300 ${
-                          selectedCategory === cat ? "bg-gold text-bg-primary" : "border border-border text-text-secondary hover:border-gold hover:text-gold"
-                        }`}>{cat}</button>
-                    ))}
-                  </div>
-                </div>
-                <div>
-                  <p className="text-xs tracking-wider uppercase text-text-muted mb-3">Price Range</p>
-                  <div className="flex flex-wrap gap-2">
-                    {PRICE_RANGES.map((range, i) => (
-                      <button key={range.label} onClick={() => setSelectedPriceRange(i)}
-                        className={`px-3 py-1.5 text-xs tracking-wider transition-all duration-300 ${
-                          selectedPriceRange === i ? "bg-gold text-bg-primary" : "border border-border text-text-secondary hover:border-gold hover:text-gold"
-                        }`}>{range.label}</button>
-                    ))}
-                  </div>
+              <div>
+                <p className="text-xs tracking-wider uppercase text-text-muted mb-3">Price Range</p>
+                <div className="flex flex-wrap gap-2">
+                  {PRICE_RANGES.map((range, i) => (
+                    <button key={range.label} onClick={() => setSelectedPriceRange(i)}
+                      className={`px-3 py-1.5 text-xs tracking-wider transition-all duration-300 ${
+                        selectedPriceRange === i ? "bg-gold text-bg-primary" : "border border-border text-text-secondary hover:border-gold hover:text-gold"
+                      }`}>{range.label}</button>
+                  ))}
                 </div>
               </div>
             </motion.div>
           )}
+
 
           {/* Active Filters */}
           {(selectedCategory !== "All" || selectedPriceRange !== 0) && (

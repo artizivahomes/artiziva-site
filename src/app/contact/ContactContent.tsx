@@ -1,6 +1,4 @@
-"use client";
-
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { Send, CheckCircle, MapPin, Phone, Mail, Upload, X } from "lucide-react";
 import { InstagramIcon as Instagram } from "@/components/ui/Icons";
@@ -10,13 +8,57 @@ import { PRODUCT_CATEGORIES, BUDGET_RANGES, INSTAGRAM_URL } from "@/lib/constant
 export default function ContactContent() {
   const [formState, setFormState] = useState<"idle" | "submitting" | "success" | "error">("idle");
   const [files, setFiles] = useState<File[]>([]);
+  const [dbCategories, setDbCategories] = useState<string[]>([]);
+
+  useEffect(() => {
+    async function loadCategories() {
+      try {
+        const res = await fetch("/api/category");
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data) && data.length > 0) {
+            setDbCategories(data.map((c: any) => c.name));
+          }
+        }
+      } catch (err) {
+        console.error("Failed to load categories:", err);
+      }
+    }
+    loadCategories();
+  }, []);
+
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setFormState("submitting");
-    // Simulate API call — will connect to /api/enquiry
-    await new Promise((r) => setTimeout(r, 1500));
-    setFormState("success");
+
+    const formData = new FormData(e.currentTarget);
+    const data = {
+      name: formData.get("name"),
+      email: formData.get("email"),
+      phone: formData.get("phone"),
+      category: formData.get("category"),
+      budget: formData.get("budget"),
+      message: formData.get("message"),
+    };
+
+    try {
+      const response = await fetch("/api/enquiry", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to submit");
+      }
+      
+      setFormState("success");
+      setFiles([]);
+    } catch (err) {
+      console.error("Submission error:", err);
+      setFormState("error");
+    }
   }
 
   if (formState === "success") {
@@ -58,7 +100,7 @@ export default function ContactContent() {
               <div className="space-y-5">
                 {[
                   { icon: MapPin, label: "Visit Us", value: "Siliguri, West Bengal, India" },
-                  { icon: Phone, label: "Call Us", value: "+91 98765 43210", href: "tel:+919876543210" },
+                  { icon: Phone, label: "Call Us", value: "+91 96359 45687", href: "tel:+919635945687" },
                   { icon: Mail, label: "Email Us", value: "hello@artizivahomes.com", href: "mailto:hello@artizivahomes.com" },
                   { icon: Instagram, label: "Follow Us", value: "@artiziva.homes", href: INSTAGRAM_URL },
                 ].map((item) => (
@@ -108,14 +150,16 @@ export default function ContactContent() {
                   <label htmlFor="phone" className={labelClass}>Phone Number *</label>
                   <div className="flex">
                     <span className="bg-bg-hover border border-border border-r-0 px-3 flex items-center text-text-muted text-sm">+91</span>
-                    <input id="phone" name="phone" type="tel" required placeholder="98765 43210" className={`${inputClass} border-l-0`} />
+                    <input id="phone" name="phone" type="tel" required placeholder="96359 45687" className={`${inputClass} border-l-0`} />
                   </div>
                 </div>
-                <div>
+                 <div>
                   <label htmlFor="category" className={labelClass}>Product Category</label>
                   <select id="category" name="category" className={inputClass}>
                     <option value="">Select category</option>
-                    {PRODUCT_CATEGORIES.map((c) => (<option key={c} value={c}>{c}</option>))}
+                    {(dbCategories.length > 0 ? dbCategories : PRODUCT_CATEGORIES).map((c) => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
                     <option value="Other">Other</option>
                   </select>
                 </div>
@@ -151,9 +195,13 @@ export default function ContactContent() {
                 )}
               </div>
               <button type="submit" disabled={formState === "submitting"} className="btn-luxury btn-gold w-full md:w-auto group">
-                {formState === "submitting" ? "Submitting..." : "Submit Enquiry"}
+                {formState === "submitting" ? "Submitting..." : 
+                 formState === "error" ? "Try Again" : "Submit Enquiry"}
                 <Send className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
               </button>
+              {formState === "error" && (
+                <p className="text-red-500 text-xs mt-2">Something went wrong. Please check fields or try again later.</p>
+              )}
             </form>
           </motion.div>
         </div>

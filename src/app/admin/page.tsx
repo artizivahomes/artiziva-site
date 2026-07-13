@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import Image from "next/image";
 import Link from "next/link";
@@ -12,14 +12,6 @@ import {
 } from "lucide-react";
 import { PRODUCTS, PRODUCT_CATEGORIES } from "@/lib/constants";
 import { formatPrice } from "@/lib/utils";
-
-type Tab = "dashboard" | "products" | "enquiries" | "orders" | "billing";
-
-const mockEnquiries = [
-  { id: "1", name: "Ananya Mehta", email: "ananya@gmail.com", phone: "+91 98765 43210", category: "Dining Tables", budget: "₹2,00,000 - ₹5,00,000", status: "new", date: "2026-04-18" },
-  { id: "2", name: "Vikram S.", email: "vikram@outlook.com", phone: "+91 87654 32109", category: "Coffee Tables", budget: "₹1,00,000 - ₹2,00,000", status: "in_progress", date: "2026-04-16" },
-  { id: "3", name: "Meera Agarwal", email: "meera@gmail.com", phone: "+91 76543 21098", category: "3D Wall Hangings", budget: "₹50,000 - ₹1,00,000", status: "completed", date: "2026-04-12" },
-];
 
 const statusColors: Record<string, string> = {
   new: "text-blue-400 bg-blue-400/10 border-blue-400/30",
@@ -33,16 +25,173 @@ const statusIcons: Record<string, React.ElementType> = {
   completed: CheckCircle,
 };
 
+type Tab = "dashboard" | "products" | "enquiries" | "orders" | "billing" | "categories";
+
 export default function AdminDashboard() {
   const [activeTab, setActiveTab] = useState<Tab>("dashboard");
+  const [enquiries, setEnquiries] = useState<any[]>([]);
+  const [loadingEnquiries, setLoadingEnquiries] = useState(true);
+  const [isSuperadmin, setIsSuperadmin] = useState(false);
+  const [categories, setCategories] = useState<any[]>([]);
+  const [loadingCategories, setLoadingCategories] = useState(true);
+  const [newCatName, setNewCatName] = useState("");
+  const [editingCatId, setEditingCatId] = useState<string | null>(null);
+  const [editingCatName, setEditingCatName] = useState("");
+
+  useEffect(() => {
+    fetchEnquiries();
+    checkSuperadmin();
+    fetchCategories();
+  }, []);
+
+
+  async function checkSuperadmin() {
+    try {
+      const { createClient } = await import("@/lib/supabase/client");
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (
+        user &&
+        (user.user_metadata?.role === "superadmin" ||
+          user.user_metadata?.is_superadmin === true ||
+          user.email === "artiziva.homes@gmail.com" ||
+          user.email === "founder@artizivahomes.com")
+      ) {
+        setIsSuperadmin(true);
+      }
+    } catch (err) {
+      console.error("Failed to check superadmin status:", err);
+    }
+  }
+
+  async function fetchCategories() {
+    try {
+      const res = await fetch("/api/category");
+      if (res.ok) {
+        const data = await res.json();
+        setCategories(data);
+      }
+    } catch (err) {
+      console.error("Failed to fetch categories:", err);
+    } finally {
+      setLoadingCategories(false);
+    }
+  }
+
+  async function addCategory(e: React.FormEvent) {
+    e.preventDefault();
+    if (!newCatName.trim()) return;
+    try {
+      const res = await fetch("/api/category", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: newCatName }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setCategories(prev => [...prev, data]);
+        setNewCatName("");
+      }
+    } catch (err) {
+      console.error("Failed to add category:", err);
+    }
+  }
+
+  async function saveEditedCategory(e: React.FormEvent) {
+    e.preventDefault();
+    if (!editingCatId || !editingCatName.trim()) return;
+    try {
+      const res = await fetch("/api/category", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: editingCatId, name: editingCatName }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setCategories(prev => prev.map(c => c.id === editingCatId ? data : c));
+        setEditingCatId(null);
+        setEditingCatName("");
+      }
+    } catch (err) {
+      console.error("Failed to update category:", err);
+    }
+  }
+
+  async function deleteCategory(id: string) {
+    if (!confirm("Are you sure you want to delete this category?")) return;
+    try {
+      const res = await fetch("/api/category", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+      if (res.ok) {
+        setCategories(prev => prev.filter(c => c.id !== id));
+      }
+    } catch (err) {
+      console.error("Failed to delete category:", err);
+    }
+  }
+
+
+
+  async function fetchEnquiries() {
+    try {
+      const res = await fetch("/api/enquiry");
+      if (res.ok) {
+        const data = await res.json();
+        setEnquiries(data);
+      }
+    } catch (err) {
+      console.error("Failed to fetch enquiries:", err);
+    } finally {
+      setLoadingEnquiries(false);
+    }
+  }
+
+  async function updateStatus(id: string, newStatus: string) {
+    try {
+      const res = await fetch("/api/enquiry", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, status: newStatus }),
+      });
+      if (res.ok) {
+        setEnquiries(prev => prev.map(e => e.id === id ? { ...e, status: newStatus } : e));
+      }
+    } catch (err) {
+      console.error("Failed to update status:", err);
+    }
+  }
+
+  async function deleteEnquiry(id: string) {
+    if (!confirm("Are you sure you want to delete this enquiry?")) return;
+    try {
+      const res = await fetch("/api/enquiry", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+      if (res.ok) {
+        setEnquiries(prev => prev.filter(e => e.id !== id));
+      } else {
+        alert("Failed to delete enquiry");
+      }
+    } catch (err) {
+      console.error("Failed to delete enquiry:", err);
+    }
+  }
+
 
   const tabs = [
     { id: "dashboard" as Tab, label: "Dashboard", icon: LayoutDashboard },
     { id: "products" as Tab, label: "Products", icon: Package },
+    { id: "categories" as Tab, label: "Categories", icon: Settings },
     { id: "enquiries" as Tab, label: "Enquiries", icon: MessageSquare },
     { id: "orders" as Tab, label: "Orders", icon: ShoppingCart },
     { id: "billing" as Tab, label: "Billing", icon: FileText },
   ];
+
 
   return (
     <div className="min-h-screen pt-20">
@@ -76,7 +225,7 @@ export default function AdminDashboard() {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
               {[
                 { label: "Total Products", value: PRODUCTS.length.toString(), icon: Package, color: "text-gold" },
-                { label: "Active Enquiries", value: "2", icon: MessageSquare, color: "text-blue-400" },
+                { label: "Active Enquiries", value: enquiries.filter(e => e.status !== "completed").length.toString(), icon: MessageSquare, color: "text-blue-400" },
                 { label: "Orders", value: "0", icon: ShoppingCart, color: "text-success" },
                 { label: "Revenue", value: "₹0", icon: FileText, color: "text-gold" },
               ].map((stat) => (
@@ -93,20 +242,28 @@ export default function AdminDashboard() {
               <div className="p-6 bg-bg-card border border-border">
                 <h3 className="text-sm tracking-wider uppercase text-gold mb-4">Recent Enquiries</h3>
                 <div className="space-y-3">
-                  {mockEnquiries.map((e) => {
-                    const StatusIcon = statusIcons[e.status];
-                    return (
-                      <div key={e.id} className="flex items-center justify-between p-3 bg-bg-hover">
-                        <div>
-                          <p className="text-cream text-sm">{e.name}</p>
-                          <p className="text-text-muted text-xs">{e.category} · {e.date}</p>
+                  {loadingEnquiries ? (
+                    <p className="text-text-muted text-xs p-3">Loading enquiries...</p>
+                  ) : enquiries.length === 0 ? (
+                    <p className="text-text-muted text-xs p-3">No enquiries yet</p>
+                  ) : (
+                    enquiries.slice(0, 5).map((e) => {
+                      const StatusIcon = statusIcons[e.status] || AlertCircle;
+                      return (
+                        <div key={e.id} className="flex items-center justify-between p-3 bg-bg-hover">
+                          <div>
+                            <p className="text-cream text-sm">{e.name}</p>
+                            <p className="text-text-muted text-xs">
+                              {e.product_category || e.category || (e.categories && e.categories[0]) || "Bespoke"} · {new Date(e.created_at || Date.now()).toLocaleDateString()}
+                            </p>
+                          </div>
+                          <span className={`flex items-center gap-1 px-2 py-1 text-[10px] tracking-wider uppercase border ${statusColors[e.status] || statusColors.new}`}>
+                            <StatusIcon className="w-3 h-3" /> {(e.status || "new").replace("_", " ")}
+                          </span>
                         </div>
-                        <span className={`flex items-center gap-1 px-2 py-1 text-[10px] tracking-wider uppercase border ${statusColors[e.status]}`}>
-                          <StatusIcon className="w-3 h-3" /> {e.status.replace("_", " ")}
-                        </span>
-                      </div>
-                    );
-                  })}
+                      );
+                    })
+                  )}
                 </div>
               </div>
               <div className="p-6 bg-bg-card border border-border">
@@ -201,30 +358,165 @@ export default function AdminDashboard() {
                       <th className="text-left px-4 py-3 text-text-muted text-xs tracking-wider uppercase">Budget</th>
                       <th className="text-left px-4 py-3 text-text-muted text-xs tracking-wider uppercase">Date</th>
                       <th className="text-left px-4 py-3 text-text-muted text-xs tracking-wider uppercase">Status</th>
+                      {isSuperadmin && (
+                        <th className="text-right px-4 py-3 text-text-muted text-xs tracking-wider uppercase">Actions</th>
+                      )}
                     </tr>
                   </thead>
                   <tbody>
-                    {mockEnquiries.map((e) => {
-                      const StatusIcon = statusIcons[e.status];
-                      return (
-                        <tr key={e.id} className="border-t border-border hover:bg-bg-hover/50 transition-colors">
-                          <td className="px-4 py-3">
-                            <p className="text-cream">{e.name}</p>
-                            <p className="text-text-muted text-xs">{e.email}</p>
-                          </td>
-                          <td className="px-4 py-3 text-text-secondary">{e.category}</td>
-                          <td className="px-4 py-3 text-gold text-xs">{e.budget}</td>
-                          <td className="px-4 py-3 text-text-secondary text-xs">{e.date}</td>
-                          <td className="px-4 py-3">
-                            <span className={`flex items-center gap-1 w-fit px-2 py-0.5 text-[10px] tracking-wider uppercase border ${statusColors[e.status]}`}>
-                              <StatusIcon className="w-3 h-3" /> {e.status.replace("_", " ")}
-                            </span>
-                          </td>
-                        </tr>
-                      );
-                    })}
+                    {loadingEnquiries ? (
+                      <tr>
+                        <td colSpan={isSuperadmin ? 6 : 5} className="px-4 py-8 text-center text-text-muted text-xs">Loading enquiries...</td>
+                      </tr>
+                    ) : enquiries.length === 0 ? (
+                      <tr>
+                        <td colSpan={isSuperadmin ? 6 : 5} className="px-4 py-8 text-center text-text-muted text-xs">No enquiries found</td>
+                      </tr>
+                    ) : (
+                      enquiries.map((e) => {
+                        return (
+                          <tr key={e.id} className="border-t border-border hover:bg-bg-hover/50 transition-colors">
+                            <td className="px-4 py-3">
+                              <p className="text-cream font-medium">{e.name}</p>
+                              <p className="text-text-muted text-xs">{e.email} · {e.phone}</p>
+                              {e.message || e.style_description ? (
+                                <p className="text-text-secondary text-xs mt-1 bg-white/5 p-2 rounded-sm italic max-w-lg">
+                                  {e.message || e.style_description}
+                                </p>
+                              ) : null}
+                            </td>
+                            <td className="px-4 py-3 text-text-secondary">
+                              {e.product_category || e.category || (e.categories && e.categories.join(", ")) || "Bespoke"}
+                            </td>
+                            <td className="px-4 py-3 text-gold text-xs">{e.budget_range || e.budget || "N/A"}</td>
+                            <td className="px-4 py-3 text-text-secondary text-xs">
+                              {new Date(e.created_at || Date.now()).toLocaleDateString()}
+                            </td>
+                            <td className="px-4 py-3">
+                              <select
+                                value={e.status || "new"}
+                                onChange={(evt) => updateStatus(e.id, evt.target.value)}
+                                className="bg-bg-card border border-border px-2 py-1 text-xs text-cream outline-none focus:border-gold"
+                              >
+                                <option value="new">New</option>
+                                <option value="in_progress">In Progress</option>
+                                <option value="completed">Completed</option>
+                              </select>
+                            </td>
+                            {isSuperadmin && (
+                              <td className="px-4 py-3 text-right">
+                                <button
+                                  onClick={() => deleteEnquiry(e.id)}
+                                  className="p-1.5 text-text-muted hover:text-error transition-colors"
+                                  title="Delete Enquiry"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </td>
+                            )}
+                          </tr>
+                        );
+                      })
+                    )}
                   </tbody>
                 </table>
+              </div>
+            </div>
+          </motion.div>
+        )}
+
+        {/* Categories Tab */}
+        {activeTab === "categories" && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {/* Form panel */}
+              <div className="md:col-span-1 p-6 bg-bg-card border border-border">
+                {editingCatId ? (
+                  <form onSubmit={saveEditedCategory}>
+                    <h3 className="text-sm tracking-wider uppercase text-gold mb-4">Edit Category</h3>
+                    <div className="mb-4">
+                      <label className="block text-xs uppercase tracking-wider text-text-secondary mb-2">Category Name</label>
+                      <input
+                        type="text"
+                        value={editingCatName}
+                        onChange={(e) => setEditingCatName(e.target.value)}
+                        required
+                        className="w-full bg-bg-hover border border-border px-3 py-2 text-cream text-sm focus:border-gold outline-none"
+                      />
+                    </div>
+                    <div className="flex gap-2">
+                      <button type="submit" className="btn-luxury btn-gold text-xs py-1.5 px-3">Save</button>
+                      <button type="button" onClick={() => setEditingCatId(null)} className="border border-border text-text-secondary text-xs py-1.5 px-3 hover:text-cream">Cancel</button>
+                    </div>
+                  </form>
+                ) : (
+                  <form onSubmit={addCategory}>
+                    <h3 className="text-sm tracking-wider uppercase text-gold mb-4">Add Category</h3>
+                    <div className="mb-4">
+                      <label className="block text-xs uppercase tracking-wider text-text-secondary mb-2">Category Name</label>
+                      <input
+                        type="text"
+                        value={newCatName}
+                        onChange={(e) => setNewCatName(e.target.value)}
+                        placeholder="e.g. Dining Tables"
+                        required
+                        className="w-full bg-bg-hover border border-border px-3 py-2 text-cream text-sm focus:border-gold outline-none"
+                      />
+                    </div>
+                    <button type="submit" className="btn-luxury btn-gold text-xs py-1.5 px-3">Add Category</button>
+                  </form>
+                )}
+              </div>
+
+              {/* Table panel */}
+              <div className="md:col-span-2 border border-border overflow-hidden bg-bg-card">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-bg-hover">
+                      <tr>
+                        <th className="text-left px-4 py-3 text-text-muted text-xs tracking-wider uppercase">Name</th>
+                        <th className="text-left px-4 py-3 text-text-muted text-xs tracking-wider uppercase">Slug</th>
+                        <th className="text-right px-4 py-3 text-text-muted text-xs tracking-wider uppercase">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {loadingCategories ? (
+                        <tr>
+                          <td colSpan={3} className="px-4 py-8 text-center text-text-muted text-xs">Loading categories...</td>
+                        </tr>
+                      ) : categories.length === 0 ? (
+                        <tr>
+                          <td colSpan={3} className="px-4 py-8 text-center text-text-muted text-xs">No categories found</td>
+                        </tr>
+                      ) : (
+                        categories.map((c) => (
+                          <tr key={c.id} className="border-t border-border hover:bg-bg-hover/50 transition-colors">
+                            <td className="px-4 py-3 text-cream font-medium">{c.name}</td>
+                            <td className="px-4 py-3 text-text-secondary text-xs">{c.slug}</td>
+                            <td className="px-4 py-3 text-right">
+                              <div className="flex items-center justify-end gap-2">
+                                <button
+                                  onClick={() => { setEditingCatId(c.id); setEditingCatName(c.name); }}
+                                  className="p-1.5 text-text-muted hover:text-gold transition-colors"
+                                  title="Edit"
+                                >
+                                  <Edit className="w-4 h-4" />
+                                </button>
+                                <button
+                                  onClick={() => deleteCategory(c.id)}
+                                  className="p-1.5 text-text-muted hover:text-error transition-colors"
+                                  title="Delete"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </div>
           </motion.div>
@@ -252,3 +544,4 @@ export default function AdminDashboard() {
     </div>
   );
 }
+

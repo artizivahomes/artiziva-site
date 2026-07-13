@@ -39,7 +39,7 @@ export default function Footer() {
                 <Mail className="w-4 h-4 text-text-secondary group-hover:text-gold transition-colors" />
               </a>
               <a
-                href="tel:+919876543210"
+                href="tel:+919635945687"
                 className="p-2.5 border border-border hover:border-gold hover:bg-gold/10 transition-all duration-300 group"
                 aria-label="Phone"
               >
@@ -117,10 +117,10 @@ export default function Footer() {
               <li className="flex items-center gap-3">
                 <Phone className="w-4 h-4 text-gold shrink-0" />
                 <a
-                  href="tel:+919876543210"
+                  href="tel:+919635945687"
                   className="text-text-secondary hover:text-cream text-sm transition-colors"
                 >
-                  +91 98765 43210
+                  +91 96359 45687
                 </a>
               </li>
               <li className="flex items-center gap-3">
