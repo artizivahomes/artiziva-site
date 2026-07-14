@@ -13,6 +13,15 @@ export default function CartSidebar() {
     useCart();
   const [isCheckingOut, setIsCheckingOut] = useState(false);
 
+  // Calculate booking advance: 50% of the item price capped at Rs. 51,000 per item
+  const bookingDeposit = items.reduce((sum, item) => {
+    const price = item.product.price || 0;
+    const depositPerItem = Math.min(price * 0.5, 51000);
+    return sum + (depositPerItem * item.quantity);
+  }, 0);
+  // Cap the final payment amount at Rs. 2,00,000 for UPI/Razorpay transaction limits
+  const finalPaymentAmount = Math.min(bookingDeposit, 200000);
+
   const handleCheckout = async () => {
     if (isCheckingOut) return;
     setIsCheckingOut(true);
@@ -21,7 +30,7 @@ export default function CartSidebar() {
       const res = await fetch("/api/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ amount: subtotal }),
+        body: JSON.stringify({ amount: finalPaymentAmount }),
       });
 
       if (!res.ok) {
@@ -186,17 +195,34 @@ export default function CartSidebar() {
             {/* Footer */}
             {items.length > 0 && (
               <div className="border-t border-border p-6 space-y-4">
-                <div className="flex justify-between items-center">
+                <div className="flex justify-between items-center text-sm">
                   <span className="text-text-secondary uppercase text-xs tracking-widest">
-                    Subtotal
+                    Items Subtotal
                   </span>
-                  <span className="text-xl font-serif gold-text">
+                  <span className="text-text-secondary">
                     {formatPrice(subtotal)}
                   </span>
                 </div>
-                <p className="text-text-muted text-xs">
-                  Taxes and shipping calculated at checkout
-                </p>
+                
+                <div className="flex justify-between items-center border-t border-dashed border-border pt-3">
+                  <div className="flex flex-col">
+                    <span className="text-gold uppercase text-xs tracking-widest font-semibold">
+                      Booking Advance
+                    </span>
+                    <span className="text-[10px] text-text-muted">
+                      50% value (max ₹51,000 / item)
+                    </span>
+                  </div>
+                  <span className="text-xl font-serif gold-text">
+                    {formatPrice(finalPaymentAmount)}
+                  </span>
+                </div>
+
+                <div className="bg-gold/5 border border-gold/20 p-3 text-[10px] text-text-secondary leading-normal space-y-1">
+                  <p className="font-semibold text-gold uppercase tracking-wider">Payment Policy</p>
+                  <p>We collect a 50% booking advance (capped at ₹51,000 per item) to initiate the custom handcrafting of your masterpiece. The remaining balance is payable upon completion and prior to delivery. Total checkout is capped at ₹2,00,000.</p>
+                </div>
+
                 <button
                   onClick={handleCheckout}
                   disabled={isCheckingOut}
