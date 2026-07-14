@@ -30,9 +30,10 @@ export async function POST(request: NextRequest) {
     });
 
     if (!response.ok) {
-      const errorText = await response.text();
-      console.error("Razorpay order creation failed:", errorText);
-      return NextResponse.json({ error: "Failed to create payment order with Razorpay" }, { status: response.status });
+      const errorData = await response.json().catch(() => ({}));
+      const errorMessage = errorData.error?.description || errorData.error?.reason || "Failed to create payment order with Razorpay";
+      console.error("Razorpay order creation failed:", errorData);
+      return NextResponse.json({ error: errorMessage }, { status: response.status });
     }
 
     const order = await response.json();
