@@ -2,14 +2,66 @@
 
 import { useCart } from "./CartProvider";
 import { formatPrice } from "@/lib/utils";
-import { X, Minus, Plus, ShoppingBag, ArrowRight } from "lucide-react";
+import { X, Minus, Plus, ShoppingBag, ArrowRight, Loader2 } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
+import { useState } from "react";
 
 export default function CartSidebar() {
-  const { items, removeItem, updateQuantity, totalItems, subtotal, isOpen, setIsOpen } =
+  const { items, removeItem, updateQuantity, totalItems, subtotal, isOpen, setIsOpen, clearCart } =
     useCart();
+  const [isCheckingOut, setIsCheckingOut] = useState(false);
+
+  const handleCheckout = async () => {
+    if (isCheckingOut) return;
+    setIsCheckingOut(true);
+
+    try {
+      const res = await fetch("/api/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ amount: subtotal }),
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || "Failed to initiate checkout");
+      }
+
+      const orderData = await res.json();
+
+      const options = {
+        key: orderData.keyId,
+        amount: orderData.amount,
+        currency: orderData.currency,
+        name: "Artiziva Homes",
+        description: "Bespoke Masterpiece Purchase",
+        order_id: orderData.id,
+        handler: function (response: any) {
+          alert(`Payment successful! Payment ID: ${response.razorpay_payment_id}`);
+          clearCart();
+          setIsOpen(false);
+        },
+        prefill: {
+          name: "",
+          email: "",
+          contact: "",
+        },
+        theme: {
+          color: "#c5a880",
+        },
+      };
+
+      const rzp = new (window as any).Razorpay(options);
+      rzp.open();
+    } catch (err: any) {
+      console.error("Razorpay checkout error:", err);
+      alert(err.message || "Payment initiation failed. Please check credentials or try again.");
+    } finally {
+      setIsCheckingOut(false);
+    }
+  };
 
   return (
     <AnimatePresence>
@@ -145,14 +197,27 @@ export default function CartSidebar() {
                 <p className="text-text-muted text-xs">
                   Taxes and shipping calculated at checkout
                 </p>
-                <button className="btn-luxury btn-gold w-full group">
-                  Proceed to Checkout
-                  <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                <button
+                  onClick={handleCheckout}
+                  disabled={isCheckingOut}
+                  className="btn-luxury btn-gold w-full group flex items-center justify-center gap-2"
+                >
+                  {isCheckingOut ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Processing...
+                    </>
+                  ) : (
+                    <>
+                      Proceed to Checkout
+                      <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                    </>
+                  )}
                 </button>
                 <Link
                   href="/contact"
                   onClick={() => setIsOpen(false)}
-                  className="btn-luxury btn-outline w-full text-xs"
+                  className="btn-luxury btn-outline w-full text-xs text-center"
                 >
                   Request Custom Quote
                 </Link>
@@ -164,3 +229,4 @@ export default function CartSidebar() {
     </AnimatePresence>
   );
 }
+

@@ -59,6 +59,8 @@ export const metadata: Metadata = {
   },
 };
 
+import Script from "next/script";
+
 export default function RootLayout({
   children,
 }: {
@@ -75,7 +77,9 @@ export default function RootLayout({
           <Footer />
           <CartSidebar />
         </CartProvider>
+        <Script src="https://checkout.razorpay.com/v1/checkout.js" strategy="lazyOnload" />
       </body>
     </html>
   );
 }
+
