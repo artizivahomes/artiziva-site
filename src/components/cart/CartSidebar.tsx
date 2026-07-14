@@ -11,7 +11,16 @@ import { useState } from "react";
 export default function CartSidebar() {
   const { items, removeItem, updateQuantity, totalItems, subtotal, isOpen, setIsOpen, clearCart } =
     useCart();
+  const [step, setStep] = useState<"cart" | "checkout">("cart");
   const [isCheckingOut, setIsCheckingOut] = useState(false);
+
+  // Form states
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
+  const [address, setAddress] = useState("");
+  const [city, setCity] = useState("");
+  const [pin, setPin] = useState("");
 
   // Calculate booking advance: 50% of the item price capped at Rs. 51,000 per item
   const bookingDeposit = items.reduce((sum, item) => {
@@ -22,15 +31,36 @@ export default function CartSidebar() {
   // Cap the final payment amount at Rs. 2,00,000 for UPI/Razorpay transaction limits
   const finalPaymentAmount = Math.min(bookingDeposit, 200000);
 
-  const handleCheckout = async () => {
+  const handleCheckout = async (e: React.FormEvent) => {
+    e.preventDefault();
     if (isCheckingOut) return;
     setIsCheckingOut(true);
+
+    const formattedItems = items.map((item) => ({
+      product: {
+        id: item.product.id,
+        price: item.product.price,
+        title: item.product.title,
+        images: item.product.images,
+      },
+      quantity: item.quantity,
+    }));
 
     try {
       const res = await fetch("/api/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ amount: finalPaymentAmount }),
+        body: JSON.stringify({
+          amount: finalPaymentAmount,
+          customer_name: name,
+          customer_email: email,
+          customer_phone: phone,
+          customer_address: address,
+          customer_city: city,
+          customer_pin: pin,
+          items: formattedItems,
+          subtotal,
+        }),
       });
 
       if (!res.ok) {
@@ -47,15 +77,34 @@ export default function CartSidebar() {
         name: "Artiziva Homes",
         description: "Bespoke Masterpiece Purchase",
         order_id: orderData.id,
-        handler: function (response: any) {
-          alert(`Payment successful! Payment ID: ${response.razorpay_payment_id}`);
-          clearCart();
-          setIsOpen(false);
+        handler: async function (response: any) {
+          try {
+            // Call confirmation endpoint to mark order as paid
+            const confirmRes = await fetch("/api/checkout/confirm", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                supabaseOrderId: orderData.supabaseOrderId,
+                razorpayPaymentId: response.razorpay_payment_id,
+              }),
+            });
+            if (confirmRes.ok) {
+              alert(`Payment successful! Booking order placed. Payment ID: ${response.razorpay_payment_id}`);
+              clearCart();
+              setStep("cart");
+              setIsOpen(false);
+            } else {
+              alert("Payment succeeded, but failed to confirm order in database. Please contact support.");
+            }
+          } catch (confirmErr) {
+            console.error("Order confirmation failed:", confirmErr);
+            alert("Payment succeeded, but failed to confirm order in database. Please contact support.");
+          }
         },
         prefill: {
-          name: "",
-          email: "",
-          contact: "",
+          name: name,
+          email: email,
+          contact: phone,
         },
         theme: {
           color: "#c5a880",
@@ -71,6 +120,9 @@ export default function CartSidebar() {
       setIsCheckingOut(false);
     }
   };
+
+  const inputClass = "w-full bg-bg-hover border border-border px-3 py-2 text-cream text-xs focus:border-gold outline-none";
+  const labelClass = "block text-[10px] uppercase tracking-wider text-text-secondary mb-1";
 
   return (
     <AnimatePresence>
@@ -98,7 +150,7 @@ export default function CartSidebar() {
               <div className="flex items-center gap-3">
                 <ShoppingBag className="w-5 h-5 text-gold" />
                 <h2 className="font-serif text-xl text-cream">
-                  Your Cart ({totalItems})
+                  {step === "cart" ? `Your Cart (${totalItems})` : "Shipping Details"}
                 </h2>
               </div>
               <button
@@ -110,91 +162,125 @@ export default function CartSidebar() {
               </button>
             </div>
 
-            {/* Items */}
+            {/* Content Area */}
             <div className="flex-1 overflow-y-auto p-6 space-y-6">
-              {items.length === 0 ? (
-                <div className="flex flex-col items-center justify-center h-full text-center">
-                  <ShoppingBag className="w-16 h-16 text-text-muted mb-4" />
-                  <p className="text-text-secondary text-lg font-serif mb-2">
-                    Your cart is empty
-                  </p>
-                  <p className="text-text-muted text-sm mb-6">
-                    Discover our handcrafted masterpieces
-                  </p>
-                  <Link
-                    href="/shop"
-                    onClick={() => setIsOpen(false)}
-                    className="btn-luxury btn-outline text-xs"
-                  >
-                    Explore Collection
-                  </Link>
-                </div>
-              ) : (
-                items.map((item) => (
-                  <motion.div
-                    key={item.product.id}
-                    layout
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, x: 100 }}
-                    className="flex gap-4 bg-bg-card p-4 border border-border"
-                  >
-                    <div className="relative w-24 h-24 shrink-0 overflow-hidden">
-                      <Image
-                        src={item.product.images[0]}
-                        alt={item.product.title}
-                        fill
-                        className="object-cover"
-                      />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <h3 className="font-serif text-sm text-cream truncate">
-                        {item.product.title}
-                      </h3>
-                      <p className="text-gold text-sm mt-1">
-                        {item.product.price
-                          ? formatPrice(item.product.price)
-                          : "Price on Request"}
-                      </p>
-                      <div className="flex items-center gap-3 mt-3">
-                        <button
-                          onClick={() =>
-                            updateQuantity(item.product.id, item.quantity - 1)
-                          }
-                          className="p-1 border border-border hover:border-gold transition-colors"
-                          aria-label="Decrease quantity"
-                        >
-                          <Minus className="w-3 h-3" />
-                        </button>
-                        <span className="text-sm w-6 text-center">
-                          {item.quantity}
-                        </span>
-                        <button
-                          onClick={() =>
-                            updateQuantity(item.product.id, item.quantity + 1)
-                          }
-                          className="p-1 border border-border hover:border-gold transition-colors"
-                          aria-label="Increase quantity"
-                        >
-                          <Plus className="w-3 h-3" />
-                        </button>
-                        <button
-                          onClick={() => removeItem(item.product.id)}
-                          className="ml-auto p-1 text-text-muted hover:text-error transition-colors"
-                          aria-label="Remove item"
-                        >
-                          <X className="w-4 h-4" />
-                        </button>
+              {step === "cart" ? (
+                items.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center h-full text-center">
+                    <ShoppingBag className="w-16 h-16 text-text-muted mb-4" />
+                    <p className="text-text-secondary text-lg font-serif mb-2">
+                      Your cart is empty
+                    </p>
+                    <p className="text-text-muted text-sm mb-6">
+                      Discover our handcrafted masterpieces
+                    </p>
+                    <Link
+                      href="/shop"
+                      onClick={() => setIsOpen(false)}
+                      className="btn-luxury btn-outline text-xs"
+                    >
+                      Explore Collection
+                    </Link>
+                  </div>
+                ) : (
+                  items.map((item) => (
+                    <motion.div
+                      key={item.product.id}
+                      layout
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, x: 100 }}
+                      className="flex gap-4 bg-bg-card p-4 border border-border"
+                    >
+                      <div className="relative w-24 h-24 shrink-0 overflow-hidden">
+                        <Image
+                          src={item.product.images[0]}
+                          alt={item.product.title}
+                          fill
+                          className="object-cover"
+                        />
                       </div>
+                      <div className="flex-1 min-w-0">
+                        <h3 className="font-serif text-sm text-cream truncate">
+                          {item.product.title}
+                        </h3>
+                        <p className="text-gold text-sm mt-1">
+                          {item.product.price
+                            ? formatPrice(item.product.price)
+                            : "Price on Request"}
+                        </p>
+                        <div className="flex items-center gap-3 mt-3">
+                          <button
+                            onClick={() =>
+                              updateQuantity(item.product.id, item.quantity - 1)
+                            }
+                            className="p-1 border border-border hover:border-gold transition-colors"
+                            aria-label="Decrease quantity"
+                          >
+                            <Minus className="w-3 h-3" />
+                          </button>
+                          <span className="text-sm w-6 text-center">
+                            {item.quantity}
+                          </span>
+                          <button
+                            onClick={() =>
+                              updateQuantity(item.product.id, item.quantity + 1)
+                            }
+                            className="p-1 border border-border hover:border-gold transition-colors"
+                            aria-label="Increase quantity"
+                          >
+                            <Plus className="w-3 h-3" />
+                          </button>
+                          <button
+                            onClick={() => removeItem(item.product.id)}
+                            className="ml-auto p-1 text-text-muted hover:text-error transition-colors"
+                            aria-label="Remove item"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    </motion.div>
+                  ))
+                )
+              ) : (
+                <form id="checkout-form" onSubmit={handleCheckout} className="space-y-4">
+                  <div>
+                    <label className={labelClass}>Full Name *</label>
+                    <input type="text" required value={name} onChange={(e) => setName(e.target.value)} className={inputClass} placeholder="John Doe" />
+                  </div>
+                  <div>
+                    <label className={labelClass}>Email Address *</label>
+                    <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} className={inputClass} placeholder="john@example.com" />
+                  </div>
+                  <div>
+                    <label className={labelClass}>Phone Number *</label>
+                    <div className="flex">
+                      <span className="bg-bg-hover border border-border border-r-0 px-3 flex items-center text-text-muted text-xs">+91</span>
+                      <input type="tel" required value={phone} onChange={(e) => setPhone(e.target.value)} className={`${inputClass} border-l-0`} placeholder="9876543210" />
                     </div>
-                  </motion.div>
-                ))
+                  </div>
+                  <div>
+                    <label className={labelClass}>Shipping Address *</label>
+                    <textarea required value={address} onChange={(e) => setAddress(e.target.value)} className={`${inputClass} h-16 resize-none`} placeholder="House/Apartment number, Street details" />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className={labelClass}>City *</label>
+                      <input type="text" required value={city} onChange={(e) => setCity(e.target.value)} className={inputClass} placeholder="Siliguri" />
+                    </div>
+                    <div>
+                      <label className={labelClass}>PIN Code *</label>
+                      <input type="text" required value={pin} onChange={(e) => setPin(e.target.value)} className={inputClass} placeholder="734001" />
+                    </div>
+                  </div>
+                </form>
               )}
             </div>
 
             {/* Footer */}
             {items.length > 0 && (
-              <div className="border-t border-border p-6 space-y-4">
+              <div className="border-t border-border p-6 space-y-4 bg-bg-secondary">
                 <div className="flex justify-between items-center text-sm">
                   <span className="text-text-secondary uppercase text-xs tracking-widest">
                     Items Subtotal
@@ -223,30 +309,53 @@ export default function CartSidebar() {
                   <p>We collect a 50% booking advance (capped at ₹51,000 per item) to initiate the custom handcrafting of your masterpiece. The remaining balance is payable upon completion and prior to delivery. Total checkout is capped at ₹2,00,000.</p>
                 </div>
 
-                <button
-                  onClick={handleCheckout}
-                  disabled={isCheckingOut}
-                  className="btn-luxury btn-gold w-full group flex items-center justify-center gap-2"
-                >
-                  {isCheckingOut ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      Processing...
-                    </>
-                  ) : (
-                    <>
-                      Proceed to Checkout
-                      <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-                    </>
-                  )}
-                </button>
-                <Link
-                  href="/contact"
-                  onClick={() => setIsOpen(false)}
-                  className="btn-luxury btn-outline w-full text-xs text-center"
-                >
-                  Request Custom Quote
-                </Link>
+                {step === "cart" ? (
+                  <button
+                    onClick={() => setStep("checkout")}
+                    className="btn-luxury btn-gold w-full group flex items-center justify-center gap-2"
+                  >
+                    Proceed to Checkout
+                    <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                  </button>
+                ) : (
+                  <div className="flex gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setStep("cart")}
+                      className="border border-border text-text-secondary hover:text-cream text-xs px-4 py-2"
+                    >
+                      Back
+                    </button>
+                    <button
+                      type="submit"
+                      form="checkout-form"
+                      disabled={isCheckingOut}
+                      className="btn-luxury btn-gold flex-1 group flex items-center justify-center gap-2"
+                    >
+                      {isCheckingOut ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          Processing...
+                        </>
+                      ) : (
+                        <>
+                          Pay Booking Advance
+                          <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                        </>
+                      )}
+                    </button>
+                  </div>
+                )}
+                
+                {step === "cart" && (
+                  <Link
+                    href="/contact"
+                    onClick={() => setIsOpen(false)}
+                    className="btn-luxury btn-outline w-full text-xs text-center block"
+                  >
+                    Request Custom Quote
+                  </Link>
+                )}
               </div>
             )}
           </motion.div>

@@ -37,12 +37,16 @@ export default function AdminDashboard() {
   const [newCatName, setNewCatName] = useState("");
   const [editingCatId, setEditingCatId] = useState<string | null>(null);
   const [editingCatName, setEditingCatName] = useState("");
+  const [orders, setOrders] = useState<any[]>([]);
+  const [loadingOrders, setLoadingOrders] = useState(true);
 
   useEffect(() => {
     fetchEnquiries();
     checkSuperadmin();
     fetchCategories();
+    fetchOrders();
   }, []);
+
 
 
   async function checkSuperadmin() {
@@ -77,6 +81,37 @@ export default function AdminDashboard() {
       setLoadingCategories(false);
     }
   }
+
+  async function fetchOrders() {
+    try {
+      const res = await fetch("/api/order");
+      if (res.ok) {
+        const data = await res.json();
+        setOrders(data);
+      }
+    } catch (err) {
+      console.error("Failed to fetch orders:", err);
+    } finally {
+      setLoadingOrders(false);
+    }
+  }
+
+  async function updateOrderStatus(orderId: string, orderStatus: string) {
+    try {
+      const res = await fetch("/api/order", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: orderId, order_status: orderStatus }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setOrders(prev => prev.map(o => o.id === orderId ? data : o));
+      }
+    } catch (err) {
+      console.error("Failed to update order status:", err);
+    }
+  }
+
 
   async function addCategory(e: React.FormEvent) {
     e.preventDefault();
@@ -226,8 +261,8 @@ export default function AdminDashboard() {
               {[
                 { label: "Total Products", value: PRODUCTS.length.toString(), icon: Package, color: "text-gold" },
                 { label: "Active Enquiries", value: enquiries.filter(e => e.status !== "completed").length.toString(), icon: MessageSquare, color: "text-blue-400" },
-                { label: "Orders", value: "0", icon: ShoppingCart, color: "text-success" },
-                { label: "Revenue", value: "₹0", icon: FileText, color: "text-gold" },
+                { label: "Orders", value: orders.length.toString(), icon: ShoppingCart, color: "text-success" },
+                { label: "Revenue", value: `₹${orders.filter(o => o.payment_status === "paid").reduce((sum, o) => sum + (o.subtotal || 0), 0).toLocaleString()}`, icon: FileText, color: "text-gold" },
               ].map((stat) => (
                 <div key={stat.label} className="p-5 bg-bg-card border border-border">
                   <div className="flex items-center justify-between mb-3">
@@ -238,6 +273,7 @@ export default function AdminDashboard() {
                 </div>
               ))}
             </div>
+
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <div className="p-6 bg-bg-card border border-border">
                 <h3 className="text-sm tracking-wider uppercase text-gold mb-4">Recent Enquiries</h3>
@@ -524,12 +560,77 @@ export default function AdminDashboard() {
 
         {/* Orders Tab */}
         {activeTab === "orders" && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center py-20">
-            <ShoppingCart className="w-12 h-12 text-text-muted mx-auto mb-4" />
-            <p className="font-serif text-xl text-cream mb-2">No orders yet</p>
-            <p className="text-text-muted text-sm">Orders will appear here once customers start purchasing.</p>
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+            <div className="border border-border overflow-hidden bg-bg-card">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-bg-hover">
+                    <tr>
+                      <th className="text-left px-4 py-3 text-text-muted text-xs tracking-wider uppercase">Customer</th>
+                      <th className="text-left px-4 py-3 text-text-muted text-xs tracking-wider uppercase">Items</th>
+                      <th className="text-left px-4 py-3 text-text-muted text-xs tracking-wider uppercase">Booking Paid</th>
+                      <th className="text-left px-4 py-3 text-text-muted text-xs tracking-wider uppercase">Order Total</th>
+                      <th className="text-left px-4 py-3 text-text-muted text-xs tracking-wider uppercase">Date</th>
+                      <th className="text-left px-4 py-3 text-text-muted text-xs tracking-wider uppercase">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {loadingOrders ? (
+                      <tr>
+                        <td colSpan={6} className="px-4 py-8 text-center text-text-muted text-xs">Loading orders...</td>
+                      </tr>
+                    ) : orders.length === 0 ? (
+                      <tr>
+                        <td colSpan={6} className="px-4 py-8 text-center text-text-muted text-xs">No orders placed yet</td>
+                      </tr>
+                    ) : (
+                      orders.map((o) => (
+                        <tr key={o.id} className="border-t border-border hover:bg-bg-hover/50 transition-colors">
+                          <td className="px-4 py-3">
+                            <p className="text-cream font-medium">{o.customer_name}</p>
+                            <p className="text-text-muted text-xs">{o.customer_email} · {o.customer_phone}</p>
+                            <p className="text-text-secondary text-[11px] mt-1 italic">{o.customer_address}, {o.customer_city} - {o.customer_pin}</p>
+                          </td>
+                          <td className="px-4 py-3 text-text-secondary text-xs">
+                            <div className="space-y-1">
+                              {o.items && o.items.map((item: any, idx: number) => (
+                                <p key={idx}>
+                                  {item.product?.title || "Product"} <span className="text-gold">x{item.quantity}</span>
+                                </p>
+                              ))}
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 text-gold text-xs">
+                            <p className="font-semibold">{formatPrice(Math.min(o.subtotal * 0.5, 51000))}</p>
+                            <p className="text-[10px] text-text-muted">ID: {o.payment_id || "N/A"}</p>
+                          </td>
+                          <td className="px-4 py-3 text-cream font-medium">{formatPrice(o.subtotal)}</td>
+                          <td className="px-4 py-3 text-text-secondary text-xs">
+                            {new Date(o.created_at || Date.now()).toLocaleDateString()}
+                          </td>
+                          <td className="px-4 py-3">
+                            <select
+                              value={o.order_status || "pending"}
+                              onChange={(evt) => updateOrderStatus(o.id, evt.target.value)}
+                              className="bg-bg-card border border-border px-2 py-1 text-xs text-cream outline-none focus:border-gold"
+                            >
+                              <option value="pending">Pending</option>
+                              <option value="processing">Processing</option>
+                              <option value="shipped">Shipped</option>
+                              <option value="completed">Completed</option>
+                              <option value="cancelled">Cancelled</option>
+                            </select>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </motion.div>
         )}
+
 
         {/* Billing Tab */}
         {activeTab === "billing" && (
