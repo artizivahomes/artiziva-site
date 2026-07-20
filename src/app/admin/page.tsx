@@ -51,21 +51,37 @@ export default function AdminDashboard() {
 
   async function checkSuperadmin() {
     try {
-      const { createClient } = await import("@/lib/supabase/client");
-      const supabase = createClient();
-      const { data: { user } } = await supabase.auth.getUser();
+      const res = await fetch("/api/auth/session");
+      if (!res.ok) {
+        window.location.href = "/admin/login";
+        return;
+      }
+      const { user } = await res.json();
+      if (!user) {
+        window.location.href = "/admin/login";
+        return;
+      }
       if (
-        user &&
-        (user.user_metadata?.role === "superadmin" ||
-          user.user_metadata?.is_superadmin === true ||
-          user.email === "artiziva.homes@gmail.com" ||
-          user.email === "founder@artizivahomes.com")
+        user.role === "superadmin" ||
+        user.is_superadmin === true ||
+        user.email === "artiziva.homes@gmail.com" ||
+        user.email === "founder@artizivahomes.com"
       ) {
         setIsSuperadmin(true);
       }
     } catch (err) {
-      console.error("Failed to check superadmin status:", err);
+      console.error("Failed to check session status:", err);
+      window.location.href = "/admin/login";
     }
+  }
+
+  async function handleLogout() {
+    try {
+      await fetch("/api/auth/logout", { method: "POST" });
+    } catch (err) {
+      console.error("Logout failed:", err);
+    }
+    window.location.href = "/";
   }
 
   async function fetchCategories() {
@@ -237,9 +253,9 @@ export default function AdminDashboard() {
             <h1 className="font-serif text-2xl text-cream">Admin Panel</h1>
             <p className="text-text-muted text-sm">Manage your store, products, and enquiries</p>
           </div>
-          <Link href="/" className="flex items-center gap-2 text-xs text-text-secondary hover:text-gold transition-colors tracking-widest uppercase">
+          <button onClick={handleLogout} className="flex items-center gap-2 text-xs text-text-secondary hover:text-gold transition-colors tracking-widest uppercase cursor-pointer">
             <LogOut className="w-4 h-4" /> Exit Admin
-          </Link>
+          </button>
         </div>
 
         {/* Tabs */}
