@@ -35,6 +35,19 @@ export default function ContactContent() {
     setFormState("submitting");
 
     const formData = new FormData(e.currentTarget);
+    
+    // Honeypot spam protection
+    const honeypot = formData.get("website_url");
+    if (honeypot) {
+      console.warn("Spambot detected via honeypot field");
+      // Simulate success to the bot, but do not hit the backend
+      setTimeout(() => {
+        setFormState("success");
+        setFiles([]);
+      }, 1000);
+      return;
+    }
+
     const data = {
       name: formData.get("name"),
       email: formData.get("email"),
@@ -42,6 +55,7 @@ export default function ContactContent() {
       category: formData.get("category"),
       budget: formData.get("budget"),
       message: formData.get("message"),
+      website_url: "", // Send empty honeypot field
     };
 
     try {
@@ -139,6 +153,12 @@ export default function ContactContent() {
           <motion.div initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="lg:col-span-2">
             <form onSubmit={handleSubmit} className="p-8 md:p-10 border border-border bg-bg-card luxury-shadow">
               <h3 className="font-serif text-2xl text-cream mb-8">Enquiry Form</h3>
+              
+              {/* Honeypot field (hidden from users, filled by bots) */}
+              <div className="hidden" aria-hidden="true">
+                <input type="text" name="website_url" tabIndex={-1} autoComplete="off" placeholder="Do not fill this field" />
+              </div>
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
                 <div>
                   <label htmlFor="name" className={labelClass}>Full Name *</label>

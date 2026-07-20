@@ -18,7 +18,13 @@ function mapDecryptedRecord(item: any) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { name, email, phone, category, budget, message } = body;
+    const { name, email, phone, category, budget, message, website_url } = body;
+
+    // Honeypot spam check (silent drop)
+    if (website_url) {
+      console.warn("Spambot submission blocked silently (honeypot caught):", { email, name });
+      return NextResponse.json({ success: true, message: "Enquiry submitted successfully" });
+    }
 
     if (!name || !email || !phone) {
       return NextResponse.json({ error: "Name, email, and phone are required" }, { status: 400 });
