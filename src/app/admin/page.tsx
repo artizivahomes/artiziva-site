@@ -7,7 +7,7 @@ import Link from "next/link";
 import {
   Package, MessageSquare, ShoppingCart, FileText,
   Plus, Eye, Edit, Trash2, Search, Filter,
-  CheckCircle, Clock, AlertCircle, LogOut,
+  CheckCircle, Clock, AlertCircle, LogOut, X,
   LayoutDashboard, Users, Settings,
 } from "lucide-react";
 import { PRODUCTS, PRODUCT_CATEGORIES } from "@/lib/constants";
@@ -40,11 +40,27 @@ export default function AdminDashboard() {
   const [orders, setOrders] = useState<any[]>([]);
   const [loadingOrders, setLoadingOrders] = useState(true);
 
+  const [dbProducts, setDbProducts] = useState<any[]>([]);
+  const [loadingProducts, setLoadingProducts] = useState(true);
+  const [isProductModalOpen, setIsProductModalOpen] = useState(false);
+  const [editingProduct, setEditingProduct] = useState<any | null>(null);
+  const [productForm, setProductForm] = useState({
+    title: "",
+    category: "",
+    price: "",
+    price_on_request: false,
+    short_description: "",
+    description: "",
+    is_sold: false,
+    image_url: "",
+  });
+
   useEffect(() => {
     fetchEnquiries();
     checkSuperadmin();
     fetchCategories();
     fetchOrders();
+    fetchProducts();
   }, []);
 
 
@@ -109,6 +125,114 @@ export default function AdminDashboard() {
       console.error("Failed to fetch orders:", err);
     } finally {
       setLoadingOrders(false);
+    }
+  }
+
+  async function fetchProducts() {
+    try {
+      const res = await fetch("/api/products");
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data) && data.length > 0) {
+          setDbProducts(data);
+        } else {
+          setDbProducts(PRODUCTS);
+        }
+      } else {
+        setDbProducts(PRODUCTS);
+      }
+    } catch (err) {
+      console.error("Failed to fetch products:", err);
+      setDbProducts(PRODUCTS);
+    } finally {
+      setLoadingProducts(false);
+    }
+  }
+
+  function openAddProductModal() {
+    setEditingProduct(null);
+    setProductForm({
+      title: "",
+      category: (categories.length > 0 ? categories[0].name : PRODUCT_CATEGORIES[0]) || "Dining Tables",
+      price: "",
+      price_on_request: false,
+      short_description: "",
+      description: "",
+      is_sold: false,
+      image_url: "",
+    });
+    setIsProductModalOpen(true);
+  }
+
+  function openEditProductModal(prod: any) {
+    setEditingProduct(prod);
+    setProductForm({
+      title: prod.title || "",
+      category: prod.category || "Dining Tables",
+      price: prod.price !== null && prod.price !== undefined ? prod.price.toString() : "",
+      price_on_request: Boolean(prod.price_on_request || prod.priceOnRequest),
+      short_description: prod.short_description || prod.shortDescription || "",
+      description: prod.description || "",
+      is_sold: Boolean(prod.is_sold || prod.isSold),
+      image_url: (prod.images && prod.images[0]) || "",
+    });
+    setIsProductModalOpen(true);
+  }
+
+  async function handleSaveProduct(e: React.FormEvent) {
+    e.preventDefault();
+    try {
+      const payload = {
+        title: productForm.title,
+        category: productForm.category,
+        price: productForm.price_on_request ? null : Number(productForm.price),
+        price_on_request: productForm.price_on_request,
+        short_description: productForm.short_description,
+        description: productForm.description,
+        is_sold: productForm.is_sold,
+        images: productForm.image_url ? [productForm.image_url] : [],
+      };
+
+      if (editingProduct && editingProduct.id) {
+        const res = await fetch("/api/products", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: editingProduct.id, ...payload }),
+        });
+        if (res.ok) {
+          const updated = await res.json();
+          setDbProducts(prev => prev.map(p => p.id === editingProduct.id ? { ...p, ...updated } : p));
+        }
+      } else {
+        const res = await fetch("/api/products", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        if (res.ok) {
+          const created = await res.json();
+          setDbProducts(prev => [created, ...prev]);
+        }
+      }
+      setIsProductModalOpen(false);
+    } catch (err) {
+      console.error("Failed to save product:", err);
+    }
+  }
+
+  async function handleDeleteProduct(id: string) {
+    if (!confirm("Are you sure you want to delete this product?")) return;
+    try {
+      const res = await fetch("/api/products", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+      if (res.ok) {
+        setDbProducts(prev => prev.filter(p => p.id !== id));
+      }
+    } catch (err) {
+      console.error("Failed to delete product:", err);
     }
   }
 
@@ -348,7 +472,7 @@ export default function AdminDashboard() {
                   <input type="text" placeholder="Search products..." className="bg-bg-card border border-border pl-10 pr-4 py-2 text-sm text-cream placeholder:text-text-muted w-64 focus:border-gold transition-colors" />
                 </div>
               </div>
-              <button className="btn-luxury btn-gold text-xs py-2 px-4">
+              <button onClick={openAddProductModal} className="btn-luxury btn-gold text-xs py-2 px-4 cursor-pointer">
                 <Plus className="w-4 h-4" /> Add Product
               </button>
             </div>
@@ -365,31 +489,37 @@ export default function AdminDashboard() {
                     </tr>
                   </thead>
                   <tbody>
-                    {PRODUCTS.map((p) => (
-                      <tr key={p.id} className="border-t border-border hover:bg-bg-hover/50 transition-colors">
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-3">
-                            <div className="relative w-10 h-10 shrink-0 overflow-hidden">
-                              <Image src={p.images[0]} alt={p.title} fill className="object-cover" />
+                    {loadingProducts ? (
+                      <tr><td colSpan={5} className="px-4 py-8 text-center text-text-muted text-xs">Loading products...</td></tr>
+                    ) : dbProducts.length === 0 ? (
+                      <tr><td colSpan={5} className="px-4 py-8 text-center text-text-muted text-xs">No products found</td></tr>
+                    ) : (
+                      dbProducts.map((p) => (
+                        <tr key={p.id} className="border-t border-border hover:bg-bg-hover/50 transition-colors">
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-3">
+                              <div className="relative w-10 h-10 shrink-0 overflow-hidden">
+                                <Image src={(p.images && p.images[0]) || "/images/placeholder.png"} alt={p.title} fill className="object-cover" />
+                              </div>
+                              <span className="text-cream font-medium">{p.title}</span>
                             </div>
-                            <span className="text-cream font-medium">{p.title}</span>
-                          </div>
-                        </td>
-                        <td className="px-4 py-3 text-text-secondary">{p.category}</td>
-                        <td className="px-4 py-3 text-gold">{p.price ? formatPrice(p.price) : "On Request"}</td>
-                        <td className="px-4 py-3">
-                          <span className={`px-2 py-0.5 text-[10px] tracking-wider uppercase border ${p.isSold ? statusColors.completed : "text-success bg-success/10 border-success/30"}`}>
-                            {p.isSold ? "Sold" : "Active"}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 text-right">
-                          <div className="flex items-center justify-end gap-2">
-                            <button className="p-1.5 text-text-muted hover:text-gold transition-colors" title="Edit"><Edit className="w-4 h-4" /></button>
-                            <button className="p-1.5 text-text-muted hover:text-error transition-colors" title="Delete"><Trash2 className="w-4 h-4" /></button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
+                          </td>
+                          <td className="px-4 py-3 text-text-secondary">{p.category}</td>
+                          <td className="px-4 py-3 text-gold">{(p.price_on_request || p.priceOnRequest) ? "On Request" : p.price ? formatPrice(p.price) : "On Request"}</td>
+                          <td className="px-4 py-3">
+                            <span className={`px-2 py-0.5 text-[10px] tracking-wider uppercase border ${(p.is_sold || p.isSold) ? statusColors.completed : "text-success bg-success/10 border-success/30"}`}>
+                              {(p.is_sold || p.isSold) ? "Sold" : "Active"}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-right">
+                            <div className="flex items-center justify-end gap-2">
+                              <button onClick={() => openEditProductModal(p)} className="p-1.5 text-text-muted hover:text-gold transition-colors cursor-pointer" title="Edit"><Edit className="w-4 h-4" /></button>
+                              <button onClick={() => handleDeleteProduct(p.id)} className="p-1.5 text-text-muted hover:text-error transition-colors cursor-pointer" title="Delete"><Trash2 className="w-4 h-4" /></button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -656,6 +786,119 @@ export default function AdminDashboard() {
             <p className="text-text-muted text-sm mb-4">Invoice generation and GST filing tools coming soon.</p>
             <p className="text-text-muted text-xs">This section will support basic invoice generation and export for manual GST filing.</p>
           </motion.div>
+        )}
+
+        {/* Product Modal */}
+        {isProductModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="bg-bg-card border border-border p-6 max-w-lg w-full max-h-[90vh] overflow-y-auto luxury-shadow">
+              <div className="flex items-center justify-between mb-6 pb-3 border-b border-border">
+                <h3 className="font-serif text-lg text-cream">{editingProduct ? "Edit Product" : "Add New Product"}</h3>
+                <button onClick={() => setIsProductModalOpen(false)} className="text-text-muted hover:text-cream cursor-pointer"><X className="w-5 h-5" /></button>
+              </div>
+
+              <form onSubmit={handleSaveProduct} className="space-y-4">
+                <div>
+                  <label className="block text-xs uppercase tracking-wider text-text-secondary mb-1">Product Title *</label>
+                  <input
+                    type="text"
+                    required
+                    value={productForm.title}
+                    onChange={(e) => setProductForm({ ...productForm, title: e.target.value })}
+                    placeholder="e.g. Royal Teak Dining Table"
+                    className="w-full bg-bg-hover border border-border px-3 py-2 text-cream text-sm focus:border-gold outline-none"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs uppercase tracking-wider text-text-secondary mb-1">Category *</label>
+                    <select
+                      value={productForm.category}
+                      onChange={(e) => setProductForm({ ...productForm, category: e.target.value })}
+                      className="w-full bg-bg-hover border border-border px-3 py-2 text-cream text-sm focus:border-gold outline-none"
+                    >
+                      {(categories.length > 0 ? categories.map(c => c.name) : PRODUCT_CATEGORIES).map((cat: string) => (
+                        <option key={cat} value={cat}>{cat}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs uppercase tracking-wider text-text-secondary mb-1">Price (₹)</label>
+                    <input
+                      type="number"
+                      disabled={productForm.price_on_request}
+                      value={productForm.price}
+                      onChange={(e) => setProductForm({ ...productForm, price: e.target.value })}
+                      placeholder="e.g. 250000"
+                      className="w-full bg-bg-hover border border-border px-3 py-2 text-cream text-sm focus:border-gold outline-none disabled:opacity-50"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-6 pt-1">
+                  <label className="flex items-center gap-2 text-xs text-text-secondary cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={productForm.price_on_request}
+                      onChange={(e) => setProductForm({ ...productForm, price_on_request: e.target.checked })}
+                      className="accent-gold"
+                    />
+                    Price on Request
+                  </label>
+
+                  <label className="flex items-center gap-2 text-xs text-text-secondary cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={productForm.is_sold}
+                      onChange={(e) => setProductForm({ ...productForm, is_sold: e.target.checked })}
+                      className="accent-gold"
+                    />
+                    Mark as Sold
+                  </label>
+                </div>
+
+                <div>
+                  <label className="block text-xs uppercase tracking-wider text-text-secondary mb-1">Image URL</label>
+                  <input
+                    type="text"
+                    value={productForm.image_url}
+                    onChange={(e) => setProductForm({ ...productForm, image_url: e.target.value })}
+                    placeholder="e.g. /images/products/emerald-dining-table.png"
+                    className="w-full bg-bg-hover border border-border px-3 py-2 text-cream text-sm focus:border-gold outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs uppercase tracking-wider text-text-secondary mb-1">Short Description</label>
+                  <input
+                    type="text"
+                    value={productForm.short_description}
+                    onChange={(e) => setProductForm({ ...productForm, short_description: e.target.value })}
+                    placeholder="Brief summary for cards"
+                    className="w-full bg-bg-hover border border-border px-3 py-2 text-cream text-sm focus:border-gold outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs uppercase tracking-wider text-text-secondary mb-1">Full Description</label>
+                  <textarea
+                    rows={3}
+                    value={productForm.description}
+                    onChange={(e) => setProductForm({ ...productForm, description: e.target.value })}
+                    placeholder="Detailed product story..."
+                    className="w-full bg-bg-hover border border-border px-3 py-2 text-cream text-sm focus:border-gold outline-none"
+                  />
+                </div>
+
+                <div className="flex justify-end gap-3 pt-4 border-t border-border">
+                  <button type="button" onClick={() => setIsProductModalOpen(false)} className="px-4 py-2 border border-border text-xs text-text-secondary hover:text-cream cursor-pointer">Cancel</button>
+                  <button type="submit" className="btn-luxury btn-gold text-xs py-2 px-6 cursor-pointer">Save Product</button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
         )}
       </div>
     </div>
